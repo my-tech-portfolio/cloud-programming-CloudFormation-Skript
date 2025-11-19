@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2025-11-21'
+Description: Deploy a static Website on S3 with CloudFront CDN and OriginAccessControl
+
+#Definition der AWS-Ressourcen
+Resources:
+
+  #Erstellung eines privaten S3 Buckets mit index.html als Startseite 
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      WebsiteConfiguration:
+        IndexDocument: index.html
+  
+  #Berechtigungen, die den Zugriff auf S3-Bucket regeln
+  #Nur die angegebene CloudFront-Distribution darf auf den Bucket zugreifen
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Bucket
+      #Inhalt der Berechtigungsrichtlinie
+      PolicyDocument:
+        #Liste von Berechtigungen
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${Bucket}/*"
+            #Hier wird die Bedingung definiert
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  #CloudFront-Distribution wird erstellt, die Inhalte vom privaten S3-Bucket ausliefert 
+  #HTTPS wird erzwungen, nur GET/HEAD sind erlaubt
+  #Standard-Root-Object ist index.html
+  #Verknüpft mit Origin Access Control (OAC); ermöglicht Zugriff der CloudFront auf den privaten Bucket
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        #Hier wird die Ursprungsquelle definiert
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt Bucket.RegionalDomainName
+            #Verknüpft die Distribution mit OAC, damit CloudFront auf den privaten Bucket zugreifen darf
+            OriginAccessControlId: !Ref CloudFrontOriginAccessControl
+        #Regelungen, wie Anfragen an die Origin weitergeleitet werden      
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          #HTTP wird automatisch auf HTTPS umgeleitet
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          # Teile einer URL, die nach einem Fragezeichen ? kommen werden nicht an die Origin weitergeleitet (z.B. ?user=doe&color=dark); bessere Cache-Performance 
+          ForwardedValues:
+            QueryString: false
+        #Standard-Zertifikat von CloudFront, da keine eigene Domain erworben wurde    
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+          
+  #OAC ersetzt den früheren Origin Access Identity/OAI-Mechanismus
+  #OAC ist für die Authentifizierung der CloudFront beim Origin wichtig (Zugriff auf privaten AWS-Bucket wird nur der CloudFront gewährt)   
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-OAC-${AWS::Region}"
+        #Legt fest, dass OAC für S3 gedacht ist
+        OriginAccessControlOriginType: s3
+        #Anfragen von CloudFront werden immer signiert; Kern für Sicherheit und Zugriffsbeschränkung
+        SigningBehavior: always
+        # Festlegung des Signaturprotokolls
+        SigningProtocol: sigv4
+
+#Ausgabe der CloudFront URL im CloudFormation-Interface nach der Bereitstellung des Stacks
+Outputs:
+  WebsiteURL:
+    Description: CloudFront-Distribution URL
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
