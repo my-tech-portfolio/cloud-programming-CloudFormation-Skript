@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2025-11-21'
+AWSTemplateFormatVersion: '2010-09-09'
 Description: Deploy a static Website on S3 with CloudFront CDN and OriginAccessControl
 
 #Definition der AWS-Ressourcen
