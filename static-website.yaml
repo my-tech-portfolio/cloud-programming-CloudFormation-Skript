@@ -44,6 +44,8 @@ Resources:
         #Hier wird die Ursprungsquelle definiert
         Origins:
           - Id: S3Origin
+            # Wird benötigt, damit die CloudFront-Distribution fehlerfrei erstellt werden kann
+            S3OriginConfig: {}
             DomainName: !GetAtt Bucket.RegionalDomainName
             #Verknüpft die Distribution mit OAC, damit CloudFront auf den privaten Bucket zugreifen darf
             OriginAccessControlId: !Ref CloudFrontOriginAccessControl
